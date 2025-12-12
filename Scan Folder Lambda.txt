@@ -1,0 +1,45 @@
+import os
+
+def lambda_handler(e, c):
+    try:
+        base_path = "/mnt/efs"  # adjust if needed
+        all_folders = []
+        all_files = []
+
+        if not os.path.exists(base_path):
+            print(f"❌ Path '{base_path}' not found.")
+            return {'statusCode': 500, 'body': f"{base_path} not found"}
+
+        print(f"✅ Scanning {base_path} for folders and files...")
+        collect_items(base_path, all_folders, all_files)
+
+        print(f"\n📁 Total folders found: {len(all_folders)}")
+        for folder in all_folders:
+            print(folder)
+
+        print(f"\n📄 Total files found: {len(all_files)}")
+        for file in all_files:
+            print(file)
+
+        return {
+            'statusCode': 200,
+            'body': f"Found {len(all_folders)} folders and {len(all_files)} files under {base_path}"
+        }
+
+    except Exception as x:
+        print(f"❌ Error: {x}")
+        return {'statusCode': 500, 'body': f'Error: {x}'}
+
+
+def collect_items(path, folder_list, file_list):
+    try:
+        for entry in os.scandir(path):
+            if entry.is_dir(follow_symlinks=False):
+                folder_list.append(entry.path)
+                collect_items(entry.path, folder_list, file_list)
+            elif entry.is_file(follow_symlinks=False):
+                file_list.append(entry.path)
+    except PermissionError:
+        print(f"⚠️ Permission denied: {path}")
+    except Exception as ex:
+        print(f"❌ Error scanning {path}: {ex}")

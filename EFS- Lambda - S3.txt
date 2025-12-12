@@ -1,0 +1,94 @@
+1.lambda function: delete-crm-core-prod-efs-data-using-s3-datasync-moved
+{ VPC:vpc-07a2415eeece3c39f (172.29.42.0/24) | CRM-Core-Production-01
+Subnets:
+Allow IPv6 traffic = false
+subnet-0e00d32434a423fa9 (100.64.0.0/23) | ap-southeast-1a, CRMCoreProd01-PodSub01
+subnet-0473775406caf99ee (100.64.4.0/23) | ap-southeast-1c, CRMCoreProd01-PodSub03
+subnet-0f506413a5418be74 (100.64.2.0/23) | ap-southeast-1b, CRMCoreProd01-PodSub02
+Security groups:
+sg-014a8df3e375b8964 (CrmCoreEksProd01-DteEfs) | CRMCoreProd01-DTE-EfsSecGrp
+(update this security group with 100.64.0.0/21 for access lambda function)
+
+File system ID:
+fs-09fa64290cf401476 
+Local mount path:
+/mnt/efs
+
+Role:delete-crm-core-prod-efs-data-using-s3-datasync-mo-role (auto generate)
+Permissions:(add extra)
+AmazonElasticFileSystemClientReadOnlyAccess
+AWSLambdaVPCAccessExecutionRole
+}
+
+
+2. EFS Access Points
+{ File system ID: fs-09fa64290cf401476
+Name: lambda-access point
+Path: /
+POSIX user: 0 : 0
+Owner user ID: 0
+Owner group ID: 0
+Access point permissions: 0755 }
+
+3. Datasync: crm-core-eks-prod-efs-application-log
+{ Source location(EFS)
+File system: fs-09fa64290cf401476 
+Path: /
+Subnet: subnet-0e00d32434a423fa9 
+Security groups: sg-014a8df3e375b8964 
+
+Destination location (S3)
+S3 bucket: crm-core-s3-prod-efs-application-log
+Path: /
+Source data options: 
+Contents to scan Everything (with exclusions)
+Excludes: /tomcat, *.log, /prometheus
+
+Transfer options
+Transfer mode: Transfer only data that has changed
+
+Verification
+Verify only transferred data
+
+Logging
+Log level: Log all transferred objects and files
+CloudWatch log group: /aws/datasync/crm-core-eks-prod-efs-application-log 
+
+Schedule
+Schedule expression
+cron(0 14 * * ? *)
+At 02:00 PM, every day (UTC)
+}
+
+4. S3 bucket IAM role: datasync-s3-access-role
+{ Permissions: datasync-s3-access-permission
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::crm-core-s3-prod-efs-application-log",
+                "arn:aws:s3:::crm-core-s3-prod-efs-application-log/*"
+            ]
+        }
+    ]
+}
+}
+
+5. CloudWatch log group
+{ /aws/datasync/crm-core-eks-prod-efs-application-log 
+Subscription filters: 
+
+Filter name: delete-crm-core-prod-efs-data-using-s3-datasync-moved-transferred file
+Filter pattern: Transferred file
+Destination ARN: lambda function
+Subscription filter type: Log group-level}
+
