@@ -19,12 +19,10 @@ s3 = boto3.client("s3")
 def get_latest_inventory_key():
     paginator = s3.get_paginator("list_objects_v2")
     latest = None
-
     for page in paginator.paginate(Bucket=INVENTORY_BUCKET, Prefix=INVENTORY_PREFIX):
         for obj in page.get("Contents", []):
             if not latest or obj["LastModified"] > latest["LastModified"]:
                 latest = obj
-
     if latest:
         return latest["Key"]
     else:
@@ -33,13 +31,11 @@ def get_latest_inventory_key():
 def load_inventory_keys(inventory_key):
     response = s3.get_object(Bucket=INVENTORY_BUCKET, Key=inventory_key)
     keys = set()
-
     with gzip.GzipFile(fileobj=response["Body"]) as gz:
         reader = csv.reader(line.decode("utf-8") for line in gz)
         next(reader)
         for row in reader:
             keys.add(row[1])
-
     return keys
 
 def lambda_handler(event, context):
@@ -49,8 +45,8 @@ def lambda_handler(event, context):
     inventory_key = get_latest_inventory_key()
     s3_keys = load_inventory_keys(inventory_key)
 
-    deleted = []
-    skipped = []
+    deleted_count = 0
+    skipped_count = 0
 
     for root, _, files in os.walk(EFS_MOUNT_PATH):
         for file in files:
@@ -61,7 +57,8 @@ def lambda_handler(event, context):
             age = now - os.stat(full_path).st_mtime
 
             if age < retention_seconds:
-                skipped.append(full_path)
+                skipped_count += 1
+                print(f"Skipped (too recent): {full_path}")
                 continue
 
             s3_key = full_path.replace(EFS_MOUNT_PATH + "/", "")
@@ -69,25 +66,20 @@ def lambda_handler(event, context):
             if s3_key in s3_keys:
                 try:
                     os.remove(full_path)
-                    deleted.append(full_path)
+                    deleted_count += 1
+                    print(f"Deleted: {full_path}")
                 except Exception as e:
+                    skipped_count += 1
                     print(f"Error deleting {full_path}: {e}")
-                    skipped.append(full_path)
             else:
-                skipped.append(full_path)
+                skipped_count += 1
+                print(f"Skipped (not in inventory): {full_path}")
 
-    print(f"Deleted files count: {len(deleted)}")
-    for f in deleted:
-        print(f)
-
-    print(f"Skipped files count: {len(skipped)}")
-    for f in skipped:
-        print(f)
+    print(f"Total deleted files: {deleted_count}")
+    print(f"Total skipped files: {skipped_count}")
 
     return {
         "statusCode": 200,
-        "deleted_count": len(deleted),
-        "skipped_count": len(skipped),
-        "deleted_files": deleted,
-        "skipped_files": skipped
+        "deleted_count": deleted_count,
+        "skipped_count": skipped_count
     }
