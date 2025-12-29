@@ -1,14 +1,18 @@
-import boto3
 import os
+import boto3
 import csv
 import gzip
 import time
 
-EFS_MOUNT_PATH = "/mnt/efs"
-SOURCE_BUCKET = "cg-s3-dev-efs-application-log"
-INVENTORY_BUCKET = "cg-s3-dev-efs-application-log-object-inventory"
-INVENTORY_PREFIX = "cg-s3-dev-efs-application-log/cg-s3-dev-efs-application-log-inventory/data/"
-RETENTION_DAYS = 90
+EFS_MOUNT_PATH = os.environ.get("EFS_MOUNT_PATH")
+INVENTORY_BUCKET = os.environ.get("INVENTORY_BUCKET")
+INVENTORY_PREFIX = os.environ.get("INVENTORY_PREFIX")
+RETENTION_DAYS = os.environ.get("RETENTION_DAYS")
+
+if not all([EFS_MOUNT_PATH, INVENTORY_BUCKET, INVENTORY_PREFIX, RETENTION_DAYS]):
+    raise Exception("One or more required environment variables are missing: EFS_MOUNT_PATH, INVENTORY_BUCKET, INVENTORY_PREFIX, RETENTION_DAYS")
+
+RETENTION_DAYS = int(RETENTION_DAYS)
 
 s3 = boto3.client("s3")
 
@@ -21,7 +25,10 @@ def get_latest_inventory_key():
             if not latest or obj["LastModified"] > latest["LastModified"]:
                 latest = obj
 
-    return latest["Key"]
+    if latest:
+        return latest["Key"]
+    else:
+        raise Exception("No inventory file found in S3.")
 
 def load_inventory_keys(inventory_key):
     response = s3.get_object(Bucket=INVENTORY_BUCKET, Key=inventory_key)
@@ -54,18 +61,33 @@ def lambda_handler(event, context):
             age = now - os.stat(full_path).st_mtime
 
             if age < retention_seconds:
+                skipped.append(full_path)
                 continue
 
             s3_key = full_path.replace(EFS_MOUNT_PATH + "/", "")
 
             if s3_key in s3_keys:
-                os.remove(full_path)
-                deleted.append(full_path)
+                try:
+                    os.remove(full_path)
+                    deleted.append(full_path)
+                except Exception as e:
+                    print(f"Error deleting {full_path}: {e}")
+                    skipped.append(full_path)
             else:
                 skipped.append(full_path)
+
+    print(f"Deleted files count: {len(deleted)}")
+    for f in deleted:
+        print(f)
+
+    print(f"Skipped files count: {len(skipped)}")
+    for f in skipped:
+        print(f)
 
     return {
         "statusCode": 200,
         "deleted_count": len(deleted),
-        "skipped_count": len(skipped)
+        "skipped_count": len(skipped),
+        "deleted_files": deleted,
+        "skipped_files": skipped
     }
