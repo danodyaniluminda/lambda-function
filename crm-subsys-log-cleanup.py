@@ -81,6 +81,8 @@ def lambda_handler(event, context):
                     f"Stopping cleanup early. Remaining time: "
                     f"{remaining_time_seconds:.2f}s"
                 )
+                print(f"Total deleted files: {deleted_count}")
+                print(f"Total skipped files: {skipped_count}")
                 return {
                     "statusCode": 200,
                     "message": "Stopped early due to timeout buffer",
