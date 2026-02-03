@@ -70,6 +70,8 @@ def lambda_handler(event, context):
 
     deleted_count = 0
     skipped_count = 0
+    deleted_files = []
+    skipped_files = []
 
     for root, _, files in os.walk(EFS_MOUNT_PATH):
         for file in files:
@@ -80,7 +82,13 @@ def lambda_handler(event, context):
             if remaining_time_seconds <= TIMEOUT_BUFFER_SECONDS:
                 print(
                     f"Stopping early due to timeout buffer. "
-                    f"Remaining time: {remaining_time_seconds:.2f}s"
+                    f"Re\nDeleted files ({deleted_count}):")
+                for file_path in deleted_files:
+                    print(f"  {file_path}")
+                print(f"\nSkipped files ({skipped_count}):")
+                for file_path in skipped_files:
+                    print(f"  {file_path}")
+                print(f"\nmaining time: {remaining_time_seconds:.2f}s"
                 )
                 print(f"Total deleted files: {deleted_count}")
                 print(f"Total skipped files: {skipped_count}")
@@ -99,6 +107,7 @@ def lambda_handler(event, context):
 
             if age < retention_seconds:
                 skipped_count += 1
+                skipped_files.append(f"{full_path} (too recent)")
                 print(f"Skipped (too recent): {full_path}")
                 continue
 
@@ -110,15 +119,24 @@ def lambda_handler(event, context):
                 try:
                     os.remove(full_path)
                     deleted_count += 1
+                    deleted_files.append(full_path)
                     print(f"Deleted: {full_path}")
                 except Exception as e:
                     skipped_count += 1
+                    skipped_files.append(f"{full_path} (error: {e})")
                     print(f"Error deleting {full_path}: {e}")
             else:
                 skipped_count += 1
+                skipped_files.append(f"{full_path} (not in inventory)")
                 print(f"Skipped (not in inventory): {full_path}")
 
-    print(f"Total deleted files: {deleted_count}")
+    print(f"\nDeleted files ({deleted_count}):")
+    for file_path in deleted_files:
+        print(f"  {file_path}")
+    print(f"\nSkipped files ({skipped_count}):")
+    for file_path in skipped_files:
+        print(f"  {file_path}")
+    print(f"\nTotal deleted files: {deleted_count}")
     print(f"Total skipped files: {skipped_count}")
 
     return {
