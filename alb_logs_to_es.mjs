@@ -81,7 +81,8 @@ export const handler = async (event, context) => {
             body: JSON.stringify('Success'),
         };
     } catch (error) {
-        console.error("Failure:", JSON.stringify(error));
+        console.error("Failure:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        console.info("Error:", error.message || error.toString());
         logFailure(error, error && error.failedItems);
         return {
             statusCode: 500,
@@ -90,84 +91,75 @@ export const handler = async (event, context) => {
     }
 };
 
-function transform(line, key, formattedDate) {
-    const source = {};
-    const indeid = randomBytes(20).toString("hex");
+function transform(array, key, formattedDate) {
+    var source = {};
+    var indeid = randomBytes(20).toString("hex");
 
-    const match = myRegexp.exec(line) || [];
-    const [, type, time, elb, client_ip, client_port, target_ip, target_port, request_processing_time, target_processing_time, response_processing_time, elb_status_code, target_status_code, received_bytes, sent_bytes, request_type, request_url, request_protocol, user_agent_browser, ssl_cipher, ssl_protocol, target_group_arn, trace_id, domain_name, chosen_cert_arn, matched_rule_priority, request_creation_time, actions_executed, redirect_url, lambda_error_reason, target_port_list, target_status_code_list, classification, classification_reason] = match;
+    let [, type, time, elb, client_ip, client_port, target_ip, target_port, request_processing_time, target_processing_time, response_processing_time, elb_status_code, target_status_code, received_bytes, sent_bytes, request_type, request_url, request_protocol, user_agent_browser, ssl_cipher, ssl_protocol, target_group_arn, trace_id, domain_name, chosen_cert_arn, matched_rule_priority, request_creation_time, actions_executed, redirect_url, lambda_error_reason, target_port_list, target_status_code_list, classification, classification_reason] = myRegexp.exec(array) || [];
 
-    if (type == null) {
+    if (type != null) {
+       
+        const trimmedUrl = request_url.replace(/^-+\s*/, '').replace(/-+$/, '');
+        var url_pathname = new URL(trimmedUrl).pathname;
+        var url = url_pathname.split("/");
+
+        source['@id'] = indeid;
+        source['@type'] = type;
+        source['@time'] = time || new Date().toISOString();
+        source['@elb'] = elb || '-';
+        source['@client_ip'] = client_ip || '-';
+        source['@client_port'] = client_port || '-';
+        source['@target_ip'] = target_ip || '-';
+        source['@target_port'] = target_port || '-';
+        source['@request_processing_time'] = request_processing_time || '-';
+        source['@target_processing_time'] = target_processing_time || '-';
+        source['@response_processing_time'] = response_processing_time || '-';
+        source['@elb_status_code'] = elb_status_code || '-';
+        source['@target_status_code'] = target_status_code || '-';
+        source['@received_bytes'] = received_bytes || '-';
+        source['@sent_bytes'] = sent_bytes || '-';
+        source['@request_type'] = request_type || '-';
+        source['@request_url'] = trimmedUrl || '-';
+        source['@request_protocol'] = request_protocol || '-';
+        source['@user_agent_browser'] = user_agent_browser || '-';
+        source['@ssl_cipher'] = ssl_cipher || '-';
+        source['@ssl_protocol'] = ssl_protocol || '-';
+        source['@target_group_arn'] = target_group_arn || '-';
+        source['@trace_id'] = trace_id || '-';
+        source['@domain_name'] = domain_name || '-';
+        source['@chosen_cert_arn'] = chosen_cert_arn || '-';
+        source['@matched_rule_priority'] = matched_rule_priority || '-';
+        source['@request_creation_time'] = request_creation_time || new Date().toISOString();
+        source['@actions_executed'] = actions_executed || '-';
+        source['@redirect_url'] = redirect_url || '-';
+        source['@lambda_error_reason'] = lambda_error_reason || '-';
+        source['@target_port_list'] = target_port_list || '-';
+        source['@target_status_code_list'] = target_status_code_list || '-';
+        source['@classification'] = classification || '-';
+        source['@classification_reason'] = classification_reason || '-';
+        source['@message'] = array || '-';
+        source['@s3_key'] = key || '-';
+        source['@pathname'] = url_pathname || '-';
+        source['@context_path'] = url[1] || '-';
+        source['@path_1'] = url[2] || '-';
+        source['@path_2'] = url[3] || '-';
+        source['@path_3'] = url[4] || '-';
+        source['@path_4'] = url[5] || '-';
+        source['@timestamp'] = new Date().toISOString();
+        source['@app_path'] = [(domain_name || '-'), (url[1] || '-')].join();
+
+        var action = { "index": {} };
+        action.index._index = indexName + '_' + formattedDate;
+        // action.index._type = 'aws-elb';
+        action.index._id = indeid;
+
+        return [
+            JSON.stringify(action),
+            JSON.stringify(source),
+        ].join('\n') + '\n';
+    } else {
         return null;
     }
-
-    const trimmedUrl = (request_url || '').replace(/^-+\s*/, '').replace(/-+$/, '');
-
-    // Guard against unparsable URLs so a single bad line doesn't fail the batch
-    let url_pathname = '-';
-    let url = [];
-    try {
-        url_pathname = new URL(trimmedUrl).pathname;
-        url = url_pathname.split("/");
-    } catch (e) {
-        if (logFailedResponses) {
-            console.log('Skipping URL parse for line, invalid url:', trimmedUrl);
-        }
-    }
-
-    source['@id'] = indeid;
-    source['@type'] = type;
-    source['@time'] = time || new Date().toISOString();
-    source['@elb'] = elb || '-';
-    source['@client_ip'] = client_ip || '-';
-    source['@client_port'] = client_port || '-';
-    source['@target_ip'] = target_ip || '-';
-    source['@target_port'] = target_port || '-';
-    source['@request_processing_time'] = request_processing_time || '-';
-    source['@target_processing_time'] = target_processing_time || '-';
-    source['@response_processing_time'] = response_processing_time || '-';
-    source['@elb_status_code'] = elb_status_code || '-';
-    source['@target_status_code'] = target_status_code || '-';
-    source['@received_bytes'] = received_bytes || '-';
-    source['@sent_bytes'] = sent_bytes || '-';
-    source['@request_type'] = request_type || '-';
-    source['@request_url'] = trimmedUrl || '-';
-    source['@request_protocol'] = request_protocol || '-';
-    source['@user_agent_browser'] = user_agent_browser || '-';
-    source['@ssl_cipher'] = ssl_cipher || '-';
-    source['@ssl_protocol'] = ssl_protocol || '-';
-    source['@target_group_arn'] = target_group_arn || '-';
-    source['@trace_id'] = trace_id || '-';
-    source['@domain_name'] = domain_name || '-';
-    source['@chosen_cert_arn'] = chosen_cert_arn || '-';
-    source['@matched_rule_priority'] = matched_rule_priority || '-';
-    source['@request_creation_time'] = request_creation_time || new Date().toISOString();
-    source['@actions_executed'] = actions_executed || '-';
-    source['@redirect_url'] = redirect_url || '-';
-    source['@lambda_error_reason'] = lambda_error_reason || '-';
-    source['@target_port_list'] = target_port_list || '-';
-    source['@target_status_code_list'] = target_status_code_list || '-';
-    source['@classification'] = classification || '-';
-    source['@classification_reason'] = classification_reason || '-';
-    source['@message'] = line || '-';
-    source['@s3_key'] = key || '-';
-    source['@pathname'] = url_pathname || '-';
-    source['@context_path'] = url[1] || '-';
-    source['@path_1'] = url[2] || '-';
-    source['@path_2'] = url[3] || '-';
-    source['@path_3'] = url[4] || '-';
-    source['@path_4'] = url[5] || '-';
-    source['@timestamp'] = new Date().toISOString();
-    source['@app_path'] = [(domain_name || '-'), (url[1] || '-')].join();
-
-    const action = { "index": {} };
-    action.index._index = `${indexName}_${formattedDate}`;
-    action.index._id = indeid;
-
-    return [
-        JSON.stringify(action),
-        JSON.stringify(source),
-    ].join('\n') + '\n';
 }
 
 async function post(body) {
